@@ -11,6 +11,8 @@
 		884548842C38A7E9009A725F /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 884548832C38A7E9009A725F /* ContentView.swift */; };
 		884548862C38A7EB009A725F /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 884548852C38A7EB009A725F /* Assets.xcassets */; };
 		884548892C38A7EB009A725F /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 884548882C38A7EB009A725F /* Preview Assets.xcassets */; };
+		884548922C3B0EE2009A725F /* jamesspec.md in Resources */ = {isa = PBXBuildFile; fileRef = 884548912C3B0EE2009A725F /* jamesspec.md */; };
+		884548942C3B157D009A725F /* jamerfp.md in Resources */ = {isa = PBXBuildFile; fileRef = 884548932C3B157D009A725F /* jamerfp.md */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -19,6 +21,8 @@
 		884548832C38A7E9009A725F /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		884548852C38A7EB009A725F /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		884548882C38A7EB009A725F /* Preview Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Preview Assets.xcassets"; sourceTree = "<group>"; };
+		884548912C3B0EE2009A725F /* jamesspec.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; name = jamesspec.md; path = ../../../billdonner/Desktop/jamesspec.md; sourceTree = "<group>"; };
+		884548932C3B157D009A725F /* jamerfp.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = jamerfp.md; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -53,6 +57,8 @@
 			children = (
 				884548812C38A7E9009A725F /* tpicker3App.swift */,
 				884548832C38A7E9009A725F /* ContentView.swift */,
+				884548912C3B0EE2009A725F /* jamesspec.md */,
+				884548932C3B157D009A725F /* jamerfp.md */,
 				884548852C38A7EB009A725F /* Assets.xcassets */,
 				884548872C38A7EB009A725F /* Preview Content */,
 			);
@@ -127,6 +133,8 @@
 			files = (
 				884548892C38A7EB009A725F /* Preview Assets.xcassets in Resources */,
 				884548862C38A7EB009A725F /* Assets.xcassets in Resources */,
+				884548942C3B157D009A725F /* jamerfp.md in Resources */,
+				884548922C3B0EE2009A725F /* jamesspec.md in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

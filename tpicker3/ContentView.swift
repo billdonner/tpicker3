@@ -81,72 +81,201 @@ let schemes: [ColorScheme] = [
 struct TopicColorApp: App {
     var body: some Scene {
         WindowGroup {
-            ContentView(allTopics: allTopics, schemes: schemes)
+            NavigationView {
+                ContentView()
+            }
         }
     }
 }
 
+/// The main content view with a button to navigate to TopicsChooserScreen.
 struct ContentView: View {
-    let allTopics: [String]
-    let schemes: [ColorScheme]
-    @State private var showSheet = false
-    @State private var selectedSchemeIndex = 3 // Initial scheme index set to Winter
-    @State private var topics: [(id: UUID, name: String, schemeIndex: Int)] = []
-
-    init(allTopics: [String], schemes: [ColorScheme]) {
-        self.allTopics = allTopics
-        self.schemes = schemes
-        _topics = State(initialValue: TopicProvider.shared.getRandomTopics(7, from: allTopics).map { (UUID(), $0, 3) })
-    }
+    @State private var boardSize: Int = 3
 
     var body: some View {
         VStack {
-            Button("Adjust Colors") {
-                showSheet.toggle()
-            }
-            .fullScreenCover (isPresented: $showSheet) {
-                TopicSelectorView(topics: $topics, selectedSchemeIndex: $selectedSchemeIndex, schemes: schemes)
-            }
-          Spacer(minLength: 100.0)
-            ScrollView {
-                ForEach(topics.indices, id: \.self) { index in
-                    let topic = topics[index]
-                    let colorInfo = schemes[selectedSchemeIndex].mappedColors()[index % schemes[selectedSchemeIndex].colors.count]
-                    Text(topic.name)
-                        .padding()
-                        .background(colorInfo.0)
-                        .foregroundColor(colorInfo.1)
-                        .cornerRadius(8)
-                        .padding(2)
+            Text("Select Board Size")
+                .font(.largeTitle)
+                .padding(.top)
+
+            Picker("Board Size", selection: $boardSize) {
+                ForEach(3..<7) { size in
+                    Text("\(size)x\(size)").tag(size)
                 }
+            }
+            .pickerStyle(SegmentedPickerStyle())
+            .padding()
+
+            NavigationLink(destination: TopicsChooserScreen(allTopics: allTopics, schemes: schemes, boardSize: boardSize)) {
+                Text("Open Topics Chooser")
+                    .font(.title)
+                    .padding()
+                    .background(Color.blue)
+                    .foregroundColor(.white)
+                    .cornerRadius(10)
             }
         }
         .padding()
+        .navigationTitle("Main Screen")
     }
 }
 
-struct ContentView_Previews: PreviewProvider {
-    static var previews: some View {
-        ContentView(allTopics: allTopics, schemes: schemes)
-    }
+/// The view for selecting and arranging topics.
+struct TopicsChooserScreen: View {
+    let allTopics: [String]
+    let schemes: [ColorScheme]
+    let boardSize: Int
+    @State private var selectedTopics: [String] = []
+    @State private var selectedSchemeIndex = 3 // Initial scheme index set to Winter
+    @State private var rerollableIndices: Set<Int> = []
+
+    init(allTopics: [String], schemes: [ColorScheme], boardSize: Int) {
+        self.allTopics = allTopics
+        self.schemes = schemes
+        self.boardSize = boardSize
+
+        let randomCount = boardSize - 2
+        let initialTopics = TopicProvider.shared.getRandomTopics(randomCount, from: allTopics)
+        _selectedTopics = State(initialValue: initialTopics)
+      _rerollableIndices = State(initialValue: Set(0..<randomCount))
+  }
+
+  var body: some View {
+      VStack(alignment: .leading) {
+          Text("Topics Chooser")
+              .font(.largeTitle)
+              .bold()
+              .padding(.top)
+          
+          Text("If you want to change the topics, that's okay but you will end your game. If you just want to change colors or ordering, you should use 'Arrange Topics'.")
+              .font(.body)
+              .padding(.bottom)
+
+          HStack {
+              NavigationLink(destination: TopicSelectorView(allTopics: allTopics, selectedTopics: $selectedTopics, selectedSchemeIndex: $selectedSchemeIndex, maxTopics: maxTopicsForBoardSize)) {
+                  Text("Select Topics")
+              }
+
+              NavigationLink(destination: ArrangerView(topics: $selectedTopics, selectedSchemeIndex: $selectedSchemeIndex, schemes: schemes)) {
+                  Text("Arrange Topics")
+              }
+              .disabled(selectedTopics.isEmpty)
+          }
+          .padding()
+
+          ScrollView {
+              let columns = [GridItem(), GridItem(), GridItem()]
+              LazyVGrid(columns: columns, spacing: 10) {
+                  ForEach(selectedTopics.indices, id: \.self) { index in
+                      let topic = selectedTopics[index]
+                      let colorInfo = schemes[selectedSchemeIndex].mappedColors()[index % schemes[selectedSchemeIndex].colors.count]
+                      Text(topic)
+                          .padding()
+                          .background(colorInfo.0)
+                          .foregroundColor(colorInfo.1)
+                          .cornerRadius(8)
+                          .padding(2)
+                          .opacity(0.8)
+                          .onTapGesture {
+                              if rerollableIndices.contains(index) {
+                                  rerollTopic(at: index)
+                              }
+                          }
+                  }
+              }
+              .padding(.top)
+          }
+      }
+      .padding()
+      .navigationTitle("Topics Chooser")
+      .navigationBarTitleDisplayMode(.large)
+      .onChange(of: selectedTopics, perform: { newValue in
+          TopicProvider.shared.saveTopics(newValue)
+      })
+  }
+
+  private var maxTopicsForBoardSize: Int {
+      switch boardSize {
+      case 3: return 7
+      case 4: return 8
+      case 5: return 9
+      case 6: return 10
+      default: return 7
+      }
+  }
+
+  private func rerollTopic(at index: Int) {
+      var newTopic: String
+      repeat {
+          newTopic = allTopics.randomElement() ?? ""
+      } while selectedTopics.contains(newTopic)
+      
+      selectedTopics[index] = newTopic
+      rerollableIndices.remove(index)
+  }
 }
 
+/// A view for selecting topics from the full list.
 struct TopicSelectorView: View {
-    @Environment(\.presentationMode) var presentationMode
-    @Binding var topics: [(id: UUID, name: String, schemeIndex: Int)]
- 
+  let allTopics: [String]
+  @Binding var selectedTopics: [String]
+  @Binding var selectedSchemeIndex: Int
+  let maxTopics: Int
+  @State private var searchText = ""
 
-  @Binding var selectedSchemeIndex: Int // Binding to reflect changes back to ContentView
+  var body: some View {
+      List {
+          ForEach(filteredTopics, id: \.self) { topic in
+              Button(action: {
+                  if selectedTopics.contains(topic) {
+                      selectedTopics.removeAll { $0 == topic }
+                  } else if selectedTopics.count < maxTopics {
+                      selectedTopics.append(topic)
+                  }
+              }) {
+                  HStack {
+                      Text(topic)
+                      Spacer()
+                      if selectedTopics.contains(topic) {
+                          Image(systemName: "checkmark")
+                      }
+                  }
+              }
+          }
+      }
+      .navigationTitle("Select Topics")
+      .searchable(text: $searchText, prompt: "Search Topics")
+  }
+
+  var filteredTopics: [String] {
+      if searchText.isEmpty {
+          return allTopics
+      } else {
+          return allTopics.filter { $0.localizedCaseInsensitiveContains(searchText) }
+      }
+  }
+}
+
+/// A view for arranging selected topics with a selected color scheme.
+struct ArrangerView: View {
+  @Environment(\.presentationMode) var presentationMode
+  @Binding var topics: [String]
+  @Binding var selectedSchemeIndex: Int // Binding to reflect changes back to TopicsChooserScreen
   let schemes: [ColorScheme]
 
   var body: some View {
-
       VStack {
-        Button("Done") {
-            presentationMode.wrappedValue.dismiss()
-        }
-          Text("1 - Choose Color Scheme")
-              .padding(.top)
+          HStack {
+              Text("Select a Color Scheme")
+                  .font(.title2)
+                  .padding(.top)
+
+              Spacer()
+          }
+          .padding([.leading, .trailing, .top])
+
+          Text("Drag and drop the topics to change their colors.")
+              .padding(.bottom)
 
           Picker("Color Schemes", selection: $selectedSchemeIndex) {
               ForEach(0..<schemes.count, id: \.self) { index in
@@ -155,47 +284,41 @@ struct TopicSelectorView: View {
           }
           .pickerStyle(SegmentedPickerStyle())
           .padding()
-        
-            Text("2 - Rearrange Topics and Colors")
+
           ScrollView {
-              VStack {
-                  // Ensure all 12 color slots are displayed, and topics are displayed in the same order as in ContentView
+              LazyVGrid(columns: [GridItem(), GridItem(), GridItem()]) {
                   ForEach(0..<12, id: \.self) { index in
                       let colorInfo = schemes[selectedSchemeIndex].mappedColors()[index]
                       if index < topics.count {
                           let topic = topics[index]
-                          HStack {
-                              Text(topic.name)
-                                  .padding()
-                                  .background(colorInfo.0)
-                                  .foregroundColor(colorInfo.1)
-                                  .cornerRadius(8)
-                                  .onDrag { NSItemProvider(object: NSString(string: topic.name)) }
-                                  .onDrop(of: [UTType.text], delegate: TopicDropDelegate(topic: topic, topics: $topics, fromIndex: index))
-                          }
+                          Text(topic)
+                              .padding()
+                              .background(colorInfo.0)
+                              .foregroundColor(colorInfo.1)
+                              .cornerRadius(8)
+                              .onDrag { NSItemProvider(object: NSString(string: topic)) }
+                              .onDrop(of: [UTType.text], delegate: TopicDropDelegate(topic: (id: UUID(), name: topic, schemeIndex: selectedSchemeIndex), topics: $topics, fromIndex: index))
                       } else {
-                          HStack {
-                              Text("Empty")
-                                  .padding()
-                                  .background(colorInfo.0)
-                                  .foregroundColor(colorInfo.1)
-                                  .cornerRadius(8)
-                                  .onDrop(of: [UTType.text], delegate: TopicDropDelegate(topic: (id: UUID(), name: "Empty", schemeIndex: selectedSchemeIndex), topics: $topics, fromIndex: index))
-                          }
+                          Text("Empty")
+                              .padding()
+                              .background(colorInfo.0)
+                              .foregroundColor(colorInfo.1)
+                              .cornerRadius(8)
+                              .onDrop(of: [UTType.text], delegate: TopicDropDelegate(topic: (id: UUID(), name: "Empty", schemeIndex: selectedSchemeIndex), topics: $topics, fromIndex: index))
                       }
                   }
               }
+              .padding()
           }
-          .padding()
-
- 
       }
+      .navigationBarTitle("", displayMode: .inline)
   }
 }
 
+/// Drop delegate for handling drag and drop of topics.
 struct TopicDropDelegate: DropDelegate {
   let topic: (id: UUID, name: String, schemeIndex: Int)
-  @Binding var topics: [(id: UUID, name: String, schemeIndex: Int)]
+  @Binding var topics: [String]
   let fromIndex: Int
 
   func performDrop(info: DropInfo) -> Bool {
@@ -206,10 +329,10 @@ struct TopicDropDelegate: DropDelegate {
       item.loadItem(forTypeIdentifier: UTType.text.identifier, options: nil) { (data, error) in
           DispatchQueue.main.async {
               if let data = data as? Data, let text = String(data: data, encoding: .utf8) {
-                  guard let fromIndex = topics.firstIndex(where: { $0.name == text }) else { return }
+                  guard let fromIndex = topics.firstIndex(of: text) else { return }
                   let fromTopic = topics.remove(at: fromIndex)
-                  let toIndex = topics.firstIndex(where: { $0.id == topic.id }) ?? topics.endIndex
-                  topics.insert((fromTopic.id, fromTopic.name, topic.schemeIndex), at: toIndex)
+                  let toIndex = topics.firstIndex(of: topic.name) ?? topics.endIndex
+                  topics.insert(fromTopic, at: toIndex)
               }
           }
       }
@@ -217,17 +340,15 @@ struct TopicDropDelegate: DropDelegate {
   }
 }
 
-struct TopicSelectorView_Previews: PreviewProvider {
+struct ArrangerView_Previews: PreviewProvider {
   static var previews: some View {
-      TopicSelectorView(
-          topics: .constant([
-              (UUID(), "Topic 1", 0),
-              (UUID(), "Topic 2", 1),
-              (UUID(), "Topic 3", 2)
-          ]),
-          selectedSchemeIndex: .constant(3), // Initial scheme index set to Winter
-          schemes: schemes
-      )
+      NavigationView {
+          ArrangerView(
+              topics: .constant(["Science", "Technology", "Engineering"]),
+              selectedSchemeIndex: .constant(3), // Initial scheme index set to Winter
+              schemes: schemes
+          )
+      }
   }
 }
 
@@ -252,13 +373,63 @@ struct ColorScheme {
   }
 }
 
-/// Provider for generating random topics.
+/// Provider for generating and saving topics.
 class TopicProvider {
   static let shared = TopicProvider()
+  private let topicsKey = "selectedTopics"
   private init() {}
 
   /// Returns a specified number of random topics from a provided list.
   func getRandomTopics(_ count: Int, from topics: [String]) -> [String] {
       return Array(topics.shuffled().prefix(count))
   }
+
+  /// Loads topics from UserDefaults.
+  func loadTopics() -> [String] {
+      return UserDefaults.standard.stringArray(forKey: topicsKey) ?? []
+  }
+
+  /// Saves topics to UserDefaults.
+  func saveTopics(_ topics: [String]) {
+      UserDefaults.standard.setValue(topics, forKey: topicsKey)
+  }
 }
+
+/*
+Explanation:
+1. ContentView:
+ - Provides the main interface with a board size selector and a button to navigate to TopicsChooserScreen.
+
+2. TopicsChooserScreen:
+ - Provides the interface for selecting and arranging topics.
+ - Automatically selects a specific number of random topics based on the board size.
+ - Ensures at most three topics per line using a grid layout.
+ - Allows rerolling of randomly picked topics once by tapping on them.
+ - Includes explanatory text on how changing topics will end the game, and changing colors or ordering can be done via 'Arrange Topics'.
+ - Persists selected topics using UserDefaults.
+
+3. TopicSelectorView:
+ - Displays the full list of topics and allows users to search and select topics.
+ - Uses a list with a search bar.
+ - Marks selected topics with a checkmark.
+ - Limits the selection to a maximum number of topics based on the board size.
+
+4. ArrangerView:
+ - Allows the user to select a color scheme.
+ - Displays topics in the same order as they are passed in, with colors changing based on the selected scheme.
+ - Ensures all twelve color slots are displayed, even if there are fewer topics.
+ - Supports drag-and-drop functionality to reorder topics.
+ - Uses LazyVGrid for a 3x4 grid layout for the topic buttons.
+ - Includes explanatory text on how to change the colors of the topics by drag and drop.
+
+5. TopicDropDelegate:
+ - Handles the drop operation to reorder topics within the list.
+
+6. ColorScheme:
+ - Represents a color scheme and maps colors to SwiftUI Color objects, calculating contrasting text colors.
+ - Provides a method to get colors for specific topics based on their hash values.
+
+7. TopicProvider:
+ - Provides random topics from a list.
+ - Manages the persistence of selected topics using UserDefaults.
+*/

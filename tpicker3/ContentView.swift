@@ -126,33 +126,29 @@ struct TopicsChooserScreen: View {
     let schemes: [ColorScheme]
     let boardSize: Int
     @State private var selectedTopics: [String] = []
-    @State private var selectedSchemeIndex = 3 // Initial scheme index set to Winter
-    @State private var rerollableIndices: Set<Int> = []
+    @State private var selectedSchemeIndex = 1 // Initial scheme index set to Summer
 
     init(allTopics: [String], schemes: [ColorScheme], boardSize: Int) {
         self.allTopics = allTopics
         self.schemes = schemes
         self.boardSize = boardSize
 
-        let randomCount = boardSize - 2
+        let randomCount = boardSize - 1
         let initialTopics = TopicProvider.shared.getRandomTopics(randomCount, from: allTopics)
         _selectedTopics = State(initialValue: initialTopics)
-      _rerollableIndices = State(initialValue: Set(0..<randomCount))
-  }
+    }
 
-  var body: some View {
-      VStack(alignment: .leading) {
-          Text("Topics Chooser")
-              .font(.largeTitle)
-              .bold()
-              .padding(.top)
+    var body: some View {
+        VStack(alignment: .leading) {
+            Text("If you want to change the topics, that's okay but you will end your game. If you just want to change colors or ordering, you should use 'Arrange Topics'.")
+                .font(.body)
+                .padding(.bottom)
+            
+          Text("You can still add \(maxTopicsForBoardSize - selectedTopics.count) topics.")
+              .font(.subheadline)
           
-          Text("If you want to change the topics, that's okay but you will end your game. If you just want to change colors or ordering, you should use 'Arrange Topics'.")
-              .font(.body)
-              .padding(.bottom)
-
           HStack {
-              NavigationLink(destination: TopicSelectorView(allTopics: allTopics, selectedTopics: $selectedTopics, selectedSchemeIndex: $selectedSchemeIndex, maxTopics: maxTopicsForBoardSize)) {
+              NavigationLink(destination: TopicSelectorView(allTopics: allTopics, selectedTopics: $selectedTopics, selectedSchemeIndex: $selectedSchemeIndex, maxTopics: maxTopicsForBoardSize, boardSize: boardSize)) {
                   Text("Select Topics")
               }
 
@@ -176,11 +172,6 @@ struct TopicsChooserScreen: View {
                           .cornerRadius(8)
                           .padding(2)
                           .opacity(0.8)
-                          .onTapGesture {
-                              if rerollableIndices.contains(index) {
-                                  rerollTopic(at: index)
-                              }
-                          }
                   }
               }
               .padding(.top)
@@ -189,9 +180,15 @@ struct TopicsChooserScreen: View {
       .padding()
       .navigationTitle("Topics Chooser")
       .navigationBarTitleDisplayMode(.large)
-      .onChange(of: selectedTopics, perform: { newValue in
+      .onAppear {
+          loadPersistentData()
+      }
+      .onChange(of: selectedTopics) { oldValue, newValue in
           TopicProvider.shared.saveTopics(newValue)
-      })
+      }
+      .onChange(of: selectedSchemeIndex) { oldValue, newValue in
+          TopicProvider.shared.saveSchemeIndex(newValue)
+      }
   }
 
   private var maxTopicsForBoardSize: Int {
@@ -204,14 +201,9 @@ struct TopicsChooserScreen: View {
       }
   }
 
-  private func rerollTopic(at index: Int) {
-      var newTopic: String
-      repeat {
-          newTopic = allTopics.randomElement() ?? ""
-      } while selectedTopics.contains(newTopic)
-      
-      selectedTopics[index] = newTopic
-      rerollableIndices.remove(index)
+  private func loadPersistentData() {
+      selectedTopics = TopicProvider.shared.loadTopics()
+      selectedSchemeIndex = TopicProvider.shared.loadSchemeIndex()
   }
 }
 
@@ -221,37 +213,69 @@ struct TopicSelectorView: View {
   @Binding var selectedTopics: [String]
   @Binding var selectedSchemeIndex: Int
   let maxTopics: Int
+  let boardSize: Int
   @State private var searchText = ""
 
   var body: some View {
-      List {
-          ForEach(filteredTopics, id: \.self) { topic in
-              Button(action: {
-                  if selectedTopics.contains(topic) {
-                      selectedTopics.removeAll { $0 == topic }
-                  } else if selectedTopics.count < maxTopics {
-                      selectedTopics.append(topic)
+      VStack {
+          Text("You can still select \(maxTopics - selectedTopics.count) topics.")
+              .font(.subheadline)
+              .padding(.bottom)
+
+          List {
+              Section(header: Text("Pre-selected Topics")) {
+                  ForEach(selectedTopics.prefix(boardSize - 1), id: \.self) { topic in
+                      HStack {
+                          Text(topic)
+                          Spacer()
+                          Text("P")
+                              .foregroundColor(.orange)
+                      }
                   }
-              }) {
-                  HStack {
-                      Text(topic)
-                      Spacer()
-                      if selectedTopics.contains(topic) {
-                          Image(systemName: "checkmark")
+              }
+
+              Section(header: Text("Selected Topics")) {
+                  ForEach(selectedTopics.suffix(from: boardSize - 1), id: \.self) { topic in
+                      Button(action: {
+                          if selectedTopics.contains(topic) {
+                              selectedTopics.removeAll { $0 == topic }
+                          }
+                      }) {
+                          HStack {
+                              Text(topic)
+                              Spacer()
+                              Image(systemName: "checkmark")
+                                  .foregroundColor(.green)
+                          }
+                      }
+                  }
+              }
+
+              Section(header: Text("All Topics")) {
+                  ForEach(filteredTopics, id: \.self) { topic in
+                      Button(action: {
+                          if !selectedTopics.contains(topic) && selectedTopics.count < maxTopics {
+                              selectedTopics.append(topic)
+                          }
+                      }) {
+                          HStack {
+                              Text(topic)
+                              Spacer()
+                          }
                       }
                   }
               }
           }
+          .navigationTitle("Select Topics")
+          .searchable(text: $searchText, prompt: "Search Topics")
       }
-      .navigationTitle("Select Topics")
-      .searchable(text: $searchText, prompt: "Search Topics")
   }
 
   var filteredTopics: [String] {
       if searchText.isEmpty {
-          return allTopics
+          return allTopics.filter { !selectedTopics.contains($0) }
       } else {
-          return allTopics.filter { $0.localizedCaseInsensitiveContains(searchText) }
+          return allTopics.filter { $0.localizedCaseInsensitiveContains(searchText) && !selectedTopics.contains($0) }
       }
   }
 }
@@ -345,7 +369,7 @@ struct ArrangerView_Previews: PreviewProvider {
       NavigationView {
           ArrangerView(
               topics: .constant(["Science", "Technology", "Engineering"]),
-              selectedSchemeIndex: .constant(3), // Initial scheme index set to Winter
+              selectedSchemeIndex: .constant(1), // Initial scheme index set to Summer
               schemes: schemes
           )
       }
@@ -377,6 +401,7 @@ struct ColorScheme {
 class TopicProvider {
   static let shared = TopicProvider()
   private let topicsKey = "selectedTopics"
+  private let schemeIndexKey = "selectedSchemeIndex"
   private init() {}
 
   /// Returns a specified number of random topics from a provided list.
@@ -393,43 +418,14 @@ class TopicProvider {
   func saveTopics(_ topics: [String]) {
       UserDefaults.standard.setValue(topics, forKey: topicsKey)
   }
+
+  /// Loads the color scheme index from UserDefaults.
+  func loadSchemeIndex() -> Int {
+      return UserDefaults.standard.integer(forKey: schemeIndexKey)
+  }
+
+  /// Saves the color scheme index to UserDefaults.
+  func saveSchemeIndex(_ index: Int) {
+      UserDefaults.standard.setValue(index, forKey: schemeIndexKey)
+  }
 }
-
-/*
-Explanation:
-1. ContentView:
- - Provides the main interface with a board size selector and a button to navigate to TopicsChooserScreen.
-
-2. TopicsChooserScreen:
- - Provides the interface for selecting and arranging topics.
- - Automatically selects a specific number of random topics based on the board size.
- - Ensures at most three topics per line using a grid layout.
- - Allows rerolling of randomly picked topics once by tapping on them.
- - Includes explanatory text on how changing topics will end the game, and changing colors or ordering can be done via 'Arrange Topics'.
- - Persists selected topics using UserDefaults.
-
-3. TopicSelectorView:
- - Displays the full list of topics and allows users to search and select topics.
- - Uses a list with a search bar.
- - Marks selected topics with a checkmark.
- - Limits the selection to a maximum number of topics based on the board size.
-
-4. ArrangerView:
- - Allows the user to select a color scheme.
- - Displays topics in the same order as they are passed in, with colors changing based on the selected scheme.
- - Ensures all twelve color slots are displayed, even if there are fewer topics.
- - Supports drag-and-drop functionality to reorder topics.
- - Uses LazyVGrid for a 3x4 grid layout for the topic buttons.
- - Includes explanatory text on how to change the colors of the topics by drag and drop.
-
-5. TopicDropDelegate:
- - Handles the drop operation to reorder topics within the list.
-
-6. ColorScheme:
- - Represents a color scheme and maps colors to SwiftUI Color objects, calculating contrasting text colors.
- - Provides a method to get colors for specific topics based on their hash values.
-
-7. TopicProvider:
- - Provides random topics from a list.
- - Manages the persistence of selected topics using UserDefaults.
-*/
